@@ -6,7 +6,7 @@
 # loading the data
 #%%
 import pandas as pd
-display = print # display is notebook only
+display = print
 
 orders = pd.read_csv('orders.csv')
 order_products = pd.read_csv('order_products.csv')
@@ -104,29 +104,43 @@ display(high_confidence.head(1))
 print("highest support rule:")
 display(high_support.head(1))
 #%% md
-# top sunday morning rule
+# timing based rules
 #%%
-# filter for sunday morning
-filtered_ids = orders_reduced[
-    (orders_reduced['order_dow'] == 0) &
-    (orders_reduced['order_hour_of_day'].between(6, 10))
-]['order_id']
+# define some time slots
+time_slots = [
+    {"label": "sunday morning", "dow": [0], "hour_range": (6, 10)},
+    {"label": "weekday breakfast", "dow": [1, 2, 3, 4, 5], "hour_range": (5, 9)},
+    {"label": "late hours", "dow": [0, 1, 2, 3, 4, 5, 6], "hour_range": (22, 23)}
+]
 
-# transaction list
-filtered_df = df_merged[df_merged['order_id'].isin(filtered_ids)]
-filtered_transactions = filtered_df.groupby('order_id')['product_name'].apply(list).values.tolist()
-
-# generate ruleset
+# parameters
 MIN_SUPPORT = 0.004
 MIN_CONFIDENCE = 0.2
-filtered_rules_results = list(apriori(filtered_transactions, min_support=MIN_SUPPORT, min_confidence=MIN_CONFIDENCE))
 
-# convert to df and display
-filtered_rules_df = extract_rules(filtered_rules_results)
+# find patterns in each time slot
+for slot in time_slots:
+    # filtering
+    filtered_ids = orders_reduced[
+        (orders_reduced['order_dow'].isin(slot['dow'])) &
+        (orders_reduced['order_hour_of_day'].between(slot['hour_range'][0], slot['hour_range'][1]))
+    ]['order_id']
+    slot_df = df_merged[df_merged['order_id'].isin(filtered_ids)]
 
-print(f"len(filtered_rules_df): {len(filtered_rules_df)}")
-print("top sunday morning rule:")
-display(filtered_rules_df.sort_values(by='Confidence', ascending=False).head(1))
+    # grouping and converting to list
+    slot_grouped = slot_df.groupby('order_id')['product_name']
+    slot_transactions = []
+    for name, group in slot_grouped:
+        slot_transactions.append(list(set(group)))
+
+    # generate ruleset
+    results = list(apriori(slot_transactions, min_support=MIN_SUPPORT, min_confidence=MIN_CONFIDENCE))
+    rules_df = extract_rules(results)
+
+    # print results
+    print(f"time: {slot['label']}")
+    print(f"len(slot_transactions): {len(slot_transactions)}")
+    print(f"len(rules_df): {len(rules_df)}")
+    display(rules_df.sort_values(by='Confidence', ascending=False).head(1))
 #%% md
 # department rule
 #%%
